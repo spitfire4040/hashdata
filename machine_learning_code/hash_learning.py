@@ -29,20 +29,31 @@ from multiprocessing import Process
 wandb.init(project="smart_attacker", entity="unr-mpl")
 
 def model_train_loop(train_list):
-    print(f"*** Begin Training {train_list[1]} ***")
-    model.fit(train_list[3], train_list[5])
+    wandb.init(project="smart_attacker", entity="unr-mpl", group="cleaned data, MLP and LR")
+    print(f"*** {train_list[1]} Begin Training {train_list[1]} ***")
+    train_list[2].fit(train_list[3], train_list[5])
     print(f"*** {train_list[1]} Trained ***")
+    print(f"*** {train_list[1]} Begin Prediction {train_list[1]} ***")
     y_pred = train_list[2].predict(train_list[4])
     y_probas = train_list[2].predict_proba(train_list[4])
+    print(f"*** {train_list[1]} Finished Prediction {train_list[1]} ***")
 
-    print("*** Begin Metric Plotting ***")
+    print(f"*** {train_list[1]} Begin Metric Plotting ***")
     # wandb.sklearn.plot_roc(y_test, y_probas, train_list[6])
-    wandb.sklearn.plot_classifier(train_list[2], train_list[3], train_list[4], train_list[5], train_list[6], y_pred,
-                                  y_probas, labels, model_name=train_list[0] + "_" + train_list[1])
-    print("*** Metric Plotting Completed ***")
+    # wandb.sklearn.plot_classifier(train_list[2], train_list[3], train_list[4], train_list[5], train_list[6], y_pred,
+    #                               y_probas, labels, model_name=train_list[0] + "_" + train_list[1])
+    wandb.log({f"{train_list[1]} Accuracy": accuracy_score(train_list[6], y_pred)})
+    wandb.log({f"{train_list[1]} Precision Macro": precision_score(train_list[6], y_pred, average='macro')})
+    wandb.log({f"{train_list[1]} Recall Macro": recall_score(train_list[6], y_pred, average='macro')})
+    wandb.log({f"{train_list[1]} F1 Macro": recall_score(train_list[6], y_pred, average='macro')})
+    wandb.log({f"{train_list[1]} Precision Weighted": precision_score(train_list[6], y_pred, average='weighted')})
+    wandb.log({f"{train_list[1]} Recall Weighted": recall_score(train_list[6], y_pred, average='weighted')})
+    wandb.log({f"{train_list[1]} F1 Weighted": recall_score(train_list[6], y_pred, average='weighted')})
+
+    print(f"*** {train_list[1]} Metric Plotting Completed ***")
 
 # Get hash csv file paths
-path_to_csvs = "/home/nthom/Documents/hashdata/hash_flow_csvs/"
+path_to_csvs = "/home/nthom/Documents/hashdata/cleaned_hashes/"
 csv_names = sorted(os.listdir(path_to_csvs), reverse=True)
 csv_names_full = []
 for name in csv_names:
@@ -79,92 +90,67 @@ for name in csv_names_full:
 
     print("*** Dataset Loaded ***")
 
-    umap_reducer = umap.UMAP(n_jobs=12)
-    tsne_reducer = TSNE(n_jobs=12, init="pca", learning_rate="auto")
+    # umap_reducer = umap.UMAP(n_jobs=12)
+    # tsne_reducer = TSNE(n_jobs=12, init="pca", learning_rate="auto")
 
-    print("*** UMAP FIT ***")
-    umap_embedding = umap_reducer.fit_transform(x)
-    print("UMAP Finished")
-    # print("*** TSNE FIT ***")
-    # tsne_embedding = tsne_reducer.fit_transform(x)
-    # print("TSNE Finished")
+    # print("*** UMAP FIT ***")
+    # umap_embedding = umap_reducer.fit_transform(x)
+    # print("UMAP Finished")
 
-    umap_df = pd.DataFrame(umap_embedding, columns=["dim1", "dim2"])
-    # umap_df["class"] = y_original
-    umap_df["class"] = dataset["class"]
-
-    # tsne_df = pd.DataFrame(tsne_embedding, columns=["dim1", "dim2"])
-    # umap_df["class"] = y_original
-    # tsne_df["class"] = dataset["class"]
-
-    # fig, ax1 = plt.subplots()
-    # for index, embedding in enumerate(umap_embedding):
-    #     ax1.scatter(
-    #         embedding[0],
-    #         embedding[1],
-    #         c=y.values.tolist()[index],
-    #         label=y.values.tolist()[index],
-    #         s=1)
-    # ax1.set_title(f'UMAP')
-    # fig.show()
-
-    fig, ax1 = plt.subplots()
-    fig.set_size_inches(24, 16)
-    sns.set_style("whitegrid")
-    sns.scatterplot(data=umap_df, x="dim1", y="dim2", hue="class", style="class",
-                    legend="full", palette=sns.color_palette("flare", as_cmap=True),
-                    s=100)
-    # fig.show()
-    fig.savefig(f"umap_{name[46:-4]}.png", dpi=300)
-
-    # fig, ax1 = plt.subplots()
-    # ax1.scatter(
-    #     tsne_embedding[:, 0],
-    #     tsne_embedding[:, 1],
-    #     c=y.values.tolist(),
-    #     label=y.values.tolist(),
-    #     s=1)
-    # ax1.set_title(f'TSNE')
-    # ax1.legend()
-    # fig.show()
+    # umap_df = pd.DataFrame(umap_embedding, columns=["dim1", "dim2"])
+    # umap_df["class"] = dataset["class"]
 
     # fig, ax1 = plt.subplots()
     # fig.set_size_inches(24, 16)
     # sns.set_style("whitegrid")
-    # sns.scatterplot(data=tsne_df, x="dim1", y="dim2", hue="class", style="class",
+    # sns.scatterplot(data=umap_df, x="dim1", y="dim2", hue="class", style="class",
     #                 legend="full", palette=sns.color_palette("flare", as_cmap=True),
     #                 s=100)
-    # # fig.show()
-    # fig.savefig(f"tsne_{name}_flows.png", dpi=300)
+    # fig.show()
+    # fig.savefig(f"umap_{name[46:-4]}.png", dpi=300)
+    
+    x_train, x_test, y_train, y_test = train_test_split(
+        x.values.tolist(),
+        y.values.tolist(),
+        test_size=0.30)
+    
+    # Spot Check Algorithms
+    models = []
+    models.append(('LR', LogisticRegression(n_jobs=12)))
+    models.append(('LDA', LinearDiscriminantAnalysis()))
+    models.append(('KNN', KNeighborsClassifier(n_jobs=12)))
+    models.append(('CART', DecisionTreeClassifier()))
+    models.append(('NB', GaussianNB()))
+    models.append(('SVM', SVC(gamma='auto')))
+    models.append(('linearSVM', LinearSVC()))
+    models.append(('SGD', SGDClassifier(n_jobs=12)))
+    models.append(('MLP', MLPClassifier()))
+    
+    # process_list = []
+    # for model_name, model in models:
+    #     train_list = [name, model_name, model, x_train, x_test, y_train, y_test, labels]
+    #     process_list.append(Process(target=model_train_loop, args=(train_list, )))
 
+    # for p in process_list:
+    #     p.start()
+    #     p.join()
+    #     print("DONE")
+
+    # train_list = [name, models[0][0], models[0][1], x_train, x_test, y_train, y_test, labels]
+    # p1 = Process(target=model_train_loop, args=(train_list,))
     #
-    # x_train, x_test, y_train, y_test = train_test_split(
-    #     x.values.tolist(),
-    #     y.values.tolist(),
-    #     test_size=0.30)
+    # train_list = [name, models[0][0], models[0][1], x_train, x_test, y_train, y_test, labels]
+    # p2 = Process(target=model_train_loop, args=(train_list,))
     #
-    # # Spot Check Algorithms
-    # models = []
-    # # models.append(('LR', LogisticRegression(n_jobs=4)))
-    # # models.append(('LDA', LinearDiscriminantAnalysis()))
-    # # models.append(('KNN', KNeighborsClassifier(n_jobs=4)))
-    # # models.append(('CART', DecisionTreeClassifier()))
-    # # models.append(('NB', GaussianNB()))
-    # # models.append(('SVM', SVC(gamma='auto', max_iter=1000, probability=True)))
-    # # models.append(('linearSVM', LinearSVC(max_iter=1000)))
-    # # models.append(('SGD', SGDClassifier(n_jobs=12)))
-    # models.append(('MLP', MLPClassifier()))
+    # p1.start()
+    # p2.start()
     #
-    # # process_list = []
-    # # for model_name, model in models:
-    # #     train_list = [name, model_name, model, x_train, x_test, y_train, y_test, labels]
-    # #     # process_list.append(Process(target=model_train_loop, args=(train_list,)))
-    # #
-    # # for p in process_list:
-    # #     p.start()
-    # #     p.join()
+    # p1.join()
+    # p2.join()
     #
-    # # evaluate each model in turn
+    # print("Done!")
+
+    # evaluate each model in turn
     # accuracy = []
     # precision_macro = []
     # recall_macro = []
@@ -173,51 +159,35 @@ for name in csv_names_full:
     # recall_weighted = []
     # f1_weighted = []
     # names = []
-    # for model_name, model in models:
-    #     print(f"*** Begin Training {model_name} ***")
-    #     model.fit(x_train, y_train)
-    #     print(f"*** {model_name} Trained ***")
-    #     y_pred = model.predict(x_test)
-    #     y_probas = model.predict_proba(x_test)
-    #
-    #     print("*** Begin Metric Plotting ***")
-    #     # wandb.sklearn.plot_classifier(model, x_train, x_test, y_train, y_test, y_pred, y_probas, labels,
-    #     #                               model_name=name + "_" + model_name)
-    #     print("*** Metric Plotting Completed ***")
-    #
-    #     wandb.log({f"Accuracy": accuracy_score(y_test, y_pred)})
-    #     wandb.log({f"Precision Macro": precision_score(y_test, y_pred, average='macro')})
-    #     wandb.log({f"Recall Macro": recall_score(y_test, y_pred, average='macro')})
-    #     wandb.log({f"F1 Macro": recall_score(y_test, y_pred, average='macro')})
-    #     wandb.log({f"Precision Weighted": precision_score(y_test, y_pred, average='weighted')})
-    #     wandb.log({f"Recall Weighted": recall_score(y_test, y_pred, average='weighted')})
-    #     wandb.log({f"F1 Weighted": recall_score(y_test, y_pred, average='weighted')})
-    #     # precision_weighted.append(precision_score(y_test, y_pred, average='weighted'))
-    #     # recall_weighted.append(recall_score(y_test, y_pred, average='weighted'))
-    #     # f1_weighted.append(f1_score(y_test, y_pred, average='weighted'))
-    #
-    #     # accuracy.append(accuracy_score(y_test, y_pred))
-    #     # precision_macro.append(precision_score(y_test, y_pred, average='macro'))
-    #     # recall_macro.append(recall_score(y_test, y_pred, average='macro'))
-    #     # f1_macro.append(f1_score(y_test, y_pred, average='macro'))
-    #     # precision_weighted.append(precision_score(y_test, y_pred, average='weighted'))
-    #     # recall_weighted.append(recall_score(y_test, y_pred, average='weighted'))
-    #     # f1_weighted.append(f1_score(y_test, y_pred, average='weighted'))
-    #     # names.append(name)
-    #     # result_mean = 0
-    #     # for result in results:
-    #     #     result_mean += result
-    #     # result_mean /= len(results)
-    #     # print(f'{name}, {result_mean}')
-    #
-    # # print(results)
-    #
-    # # # evaluate each model in turn
-    # # results_k_fold = []
-    # # names_k_fold = []
-    # # for name, model in models:
-    # #     kfold = StratifiedKFold(n_splits=10, shuffle=True)
-    # #     cv_results = cross_val_score(model, x_train, y_train, cv=kfold, scoring='accuracy')
-    # #     results_k_fold.append(cv_results)
-    # #     names_k_fold.append(name)
-    # #     print(f'{name}: {cv_results.mean()} ({cv_results.std()})')
+    for model_name, model in models:
+        try:
+            print(f"*** Begin Training {model_name} ***")
+            model.fit(x_train, y_train)
+            print(f"*** {model_name} Trained ***")
+            y_pred = model.predict(x_test)
+            # y_probas = model.predict_proba(x_test)
+
+            print("*** Begin Metric Plotting ***")
+            # wandb.sklearn.plot_classifier(model, x_train, x_test, y_train, y_test, y_pred, y_probas, labels,
+            #                               model_name=name + "_" + model_name)
+
+            wandb.log({f"{model_name} Accuracy": accuracy_score(y_test, y_pred)})
+            # wandb.log({f"{model_name} Precision Macro": precision_score(y_test, y_pred, average='macro')})
+            # wandb.log({f"{model_name} Recall Macro": recall_score(y_test, y_pred, average='macro')})
+            # wandb.log({f"{model_name} F1 Macro": recall_score(y_test, y_pred, average='macro')})
+            wandb.log({f"{model_name} Precision Weighted": precision_score(y_test, y_pred, average='weighted')})
+            wandb.log({f"{model_name} Recall Weighted": recall_score(y_test, y_pred, average='weighted')})
+            wandb.log({f"{model_name} F1 Weighted": recall_score(y_test, y_pred, average='weighted')})
+
+            print("*** Metric Plotting Completed ***")
+        except:
+            print(f"{model_name} Failed")
+    # # evaluate each model in turn
+    # results_k_fold = []
+    # names_k_fold = []
+    # for name, model in models:
+    #     kfold = StratifiedKFold(n_splits=10, shuffle=True)
+    #     cv_results = cross_val_score(model, x_train, y_train, cv=kfold, scoring='accuracy')
+    #     results_k_fold.append(cv_results)
+    #     names_k_fold.append(name)
+    #     print(f'{name}: {cv_results.mean()} ({cv_results.std()})')
