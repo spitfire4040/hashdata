@@ -1,4 +1,5 @@
 import pandas as pd
+import sklearn
 from pandas import read_csv
 from pandas.plotting import scatter_matrix
 from matplotlib import pyplot
@@ -26,53 +27,86 @@ import wandb
 import os
 from multiprocessing import Process
 
+
+# Project the data into a visualizeable space using umap and tsne
+def visualizeData(inputs, dataset_name, show_umap=True, show_tsne=False):
+    if show_umap:
+        umap_reducer = umap.UMAP(n_jobs=12)
+        print("*** UMAP FIT ***")
+        umap_embedding = umap_reducer.fit_transform(inputs)
+        print("UMAP Finished")
+
+        umap_df = pd.DataFrame(umap_embedding, columns=["dim1", "dim2"])
+        umap_df["class"] = dataset["class"]
+
+        fig, ax1 = plt.subplots()
+        fig.set_size_inches(24, 16)
+        sns.set_style("whitegrid")
+        sns.scatterplot(data=umap_df, x="dim1", y="dim2", s=100)
+        fig.show()
+        fig.savefig(f"umap_{dataset_name[46:-4]}.png", dpi=300)
+
+    if show_tsne:
+        tsne_reducer = TSNE(n_jobs=12, init="pca", learning_rate="auto")
+        print("*** TSNE FIT ***")
+        tsne_embedding = tsne_reducer.fit_transform(inputs)
+        print("*** TSNE Finished ***")
+
+        tsne_df = pd.DataFrame(tsne_embedding, columns=["dim1", "dim2"])
+        tsne_df["class"] = dataset["class"]
+
+        fig, ax1 = plt.subplots()
+        fig.set_size_inches(24, 16)
+        sns.set_style("whitegrid")
+        sns.scatterplot(data=tsne_df, x="dim1", y="dim2", hue="class", style="class",
+                        legend="full", palette=sns.color_palette("flare", as_cmap=True),
+                        s=100)
+        fig.show()
+        fig.savefig(f"tsne_{dataset_name[46:-4]}.png", dpi=300)
+
+
 wandb.init(project="smart_attacker", entity="unr-mpl")
 
-def model_train_loop(train_list):
-    wandb.init(project="smart_attacker", entity="unr-mpl", group="cleaned data, MLP and LR")
-    print(f"*** {train_list[1]} Begin Training {train_list[1]} ***")
-    train_list[2].fit(train_list[3], train_list[5])
-    print(f"*** {train_list[1]} Trained ***")
-    print(f"*** {train_list[1]} Begin Prediction {train_list[1]} ***")
-    y_pred = train_list[2].predict(train_list[4])
-    y_probas = train_list[2].predict_proba(train_list[4])
-    print(f"*** {train_list[1]} Finished Prediction {train_list[1]} ***")
-
-    print(f"*** {train_list[1]} Begin Metric Plotting ***")
-    # wandb.sklearn.plot_roc(y_test, y_probas, train_list[6])
-    # wandb.sklearn.plot_classifier(train_list[2], train_list[3], train_list[4], train_list[5], train_list[6], y_pred,
-    #                               y_probas, labels, model_name=train_list[0] + "_" + train_list[1])
-    wandb.log({f"{train_list[1]} Accuracy": accuracy_score(train_list[6], y_pred)})
-    wandb.log({f"{train_list[1]} Precision Macro": precision_score(train_list[6], y_pred, average='macro')})
-    wandb.log({f"{train_list[1]} Recall Macro": recall_score(train_list[6], y_pred, average='macro')})
-    wandb.log({f"{train_list[1]} F1 Macro": recall_score(train_list[6], y_pred, average='macro')})
-    wandb.log({f"{train_list[1]} Precision Weighted": precision_score(train_list[6], y_pred, average='weighted')})
-    wandb.log({f"{train_list[1]} Recall Weighted": recall_score(train_list[6], y_pred, average='weighted')})
-    wandb.log({f"{train_list[1]} F1 Weighted": recall_score(train_list[6], y_pred, average='weighted')})
-
-    print(f"*** {train_list[1]} Metric Plotting Completed ***")
-
 # Get hash csv file paths
-path_to_csvs = "/home/nthom/Documents/hashdata/cleaned_hashes/"
+path_to_csvs = "/home/nthom/Documents/hashdata/hashes_cleaned/"
 csv_names = sorted(os.listdir(path_to_csvs), reverse=True)
 csv_names_full = []
-for name in csv_names:
-    csv_names_full.append(path_to_csvs+name)
+for csv_name in csv_names:
+    csv_names_full.append(path_to_csvs + csv_name)
 
 # Load dataset
-columns = ['dim1','dim2','dim3','dim4','dim5','dim6','dim7','dim8','dim9','dim10','dim11',
-         'dim12','dim13','dim14','dim15','dim16','dim17','dim18','dim19','dim20','dim21',
-         'dim22','dim23','dim24','dim25','dim26','dim27','dim28','dim29','dim30','dim31','dim32','class']
+columns = ['dim1', 'dim2', 'dim3', 'dim4', 'dim5', 'dim6', 'dim7', 'dim8', 'dim9', 'dim10', 'dim11',
+           'dim12', 'dim13', 'dim14', 'dim15', 'dim16', 'dim17', 'dim18', 'dim19', 'dim20', 'dim21',
+           'dim22', 'dim23', 'dim24', 'dim25', 'dim26', 'dim27', 'dim28', 'dim29', 'dim30', 'dim31', 'dim32', 'class']
 
-for name in csv_names_full:
-    print(f"*** Begin Processing {name} Dataset ***")
+dataset_count = 0
+dataset_dict = {}
+metrics_list = []
+for dataset_index, dataset_name in enumerate(csv_names_full):
+    print(f"*** Begin Processing {dataset_name} Dataset ***")
 
-    dataset = read_csv(name, names=columns)
+    dataset_dict[dataset_name] = dataset_count
+    dataset_count += 1
+
+    dataset = read_csv(dataset_name, names=columns)
+    # print(len(dataset))
+    # exit(0)
+
+    # Uncomment this line to take only a portion of the data
     # dataset = dataset.head(len(dataset.index)//8)
 
+    # x is the entire dataframe except for the class column
     x = dataset.drop(['class'], axis=1)
+
+   # Create UMAP/TSNE visualizations
+    # visualizeData(x, dataset_name, show_umap=False, show_tsne=True)
+    # continue
+
+    # y_original is an unaltered list of all values in the class column
     y_original = dataset['class'].values.tolist()
 
+    # y is a dataframe of only the class column and the values have been converted to numeric representation
+    ###
     y = dataset['class']
     counter = 0
 
@@ -87,107 +121,85 @@ for name in csv_names_full:
     dataset["class"] = y_temp
     y = dataset['class']
     labels = dataset['class'].unique()
-
+    ###
     print("*** Dataset Loaded ***")
 
-    # umap_reducer = umap.UMAP(n_jobs=12)
-    # tsne_reducer = TSNE(n_jobs=12, init="pca", learning_rate="auto")
-
-    # print("*** UMAP FIT ***")
-    # umap_embedding = umap_reducer.fit_transform(x)
-    # print("UMAP Finished")
-
-    # umap_df = pd.DataFrame(umap_embedding, columns=["dim1", "dim2"])
-    # umap_df["class"] = dataset["class"]
-
-    # fig, ax1 = plt.subplots()
-    # fig.set_size_inches(24, 16)
-    # sns.set_style("whitegrid")
-    # sns.scatterplot(data=umap_df, x="dim1", y="dim2", hue="class", style="class",
-    #                 legend="full", palette=sns.color_palette("flare", as_cmap=True),
-    #                 s=100)
-    # fig.show()
-    # fig.savefig(f"umap_{name[46:-4]}.png", dpi=300)
-    
+    # Split the dataset into 70 percent train 30 percent test
     x_train, x_test, y_train, y_test = train_test_split(
         x.values.tolist(),
         y.values.tolist(),
         test_size=0.30)
-    
+    # Could be useful to shuffle the data, but need to make sure that class balance is maintained
+
     # Spot Check Algorithms
     models = []
-    models.append(('LR', LogisticRegression(n_jobs=12)))
-    models.append(('LDA', LinearDiscriminantAnalysis()))
-    models.append(('KNN', KNeighborsClassifier(n_jobs=12)))
-    models.append(('CART', DecisionTreeClassifier()))
-    models.append(('NB', GaussianNB()))
-    models.append(('SVM', SVC(gamma='auto')))
-    models.append(('linearSVM', LinearSVC()))
-    models.append(('SGD', SGDClassifier(n_jobs=12)))
+    # models.append(('LR', LogisticRegression(n_jobs=12)))
+    # models.append(('LDA', LinearDiscriminantAnalysis()))
+    # models.append(('KNN', KNeighborsClassifier(n_jobs=12)))
+    # models.append(('CART', DecisionTreeClassifier()))
+    # models.append(('NB', GaussianNB()))
+    # models.append(('SVM', SVC(gamma='auto')))
+    # models.append(('linearSVM', LinearSVC()))
+    # models.append(('SGD', SGDClassifier(n_jobs=12)))
     models.append(('MLP', MLPClassifier()))
-    
-    # process_list = []
-    # for model_name, model in models:
-    #     train_list = [name, model_name, model, x_train, x_test, y_train, y_test, labels]
-    #     process_list.append(Process(target=model_train_loop, args=(train_list, )))
 
-    # for p in process_list:
-    #     p.start()
-    #     p.join()
-    #     print("DONE")
 
-    # train_list = [name, models[0][0], models[0][1], x_train, x_test, y_train, y_test, labels]
-    # p1 = Process(target=model_train_loop, args=(train_list,))
-    #
-    # train_list = [name, models[0][0], models[0][1], x_train, x_test, y_train, y_test, labels]
-    # p2 = Process(target=model_train_loop, args=(train_list,))
-    #
-    # p1.start()
-    # p2.start()
-    #
-    # p1.join()
-    # p2.join()
-    #
-    # print("Done!")
-
-    # evaluate each model in turn
-    # accuracy = []
-    # precision_macro = []
-    # recall_macro = []
-    # f1_macro = []
-    # precision_weighted = []
-    # recall_weighted = []
-    # f1_weighted = []
-    # names = []
+    model_dict = {}
+    model_count = 0
+    # evaluate each model
     for model_name, model in models:
-        try:
-            print(f"*** Begin Training {model_name} ***")
-            model.fit(x_train, y_train)
-            print(f"*** {model_name} Trained ***")
-            y_pred = model.predict(x_test)
-            # y_probas = model.predict_proba(x_test)
+        model_dict[model_name] = model_count
+        model_count += 1
+        # try:
+        print(f"*** Begin Training {model_name} ***")
+        model.fit(x_train, y_train)
+        print(f"*** {model_name} Trained ***")
 
-            print("*** Begin Metric Plotting ***")
-            # wandb.sklearn.plot_classifier(model, x_train, x_test, y_train, y_test, y_pred, y_probas, labels,
-            #                               model_name=name + "_" + model_name)
+        print(f"*** Calculate Predictions and Probabilities ***")
+        y_pred = model.predict(x_test)
+        y_probas = model.predict_proba(x_test)
+        print(f"*** Predictions and Probabilities Done ***")
 
-            wandb.log({f"{model_name} Accuracy": accuracy_score(y_test, y_pred)})
-            # wandb.log({f"{model_name} Precision Macro": precision_score(y_test, y_pred, average='macro')})
-            # wandb.log({f"{model_name} Recall Macro": recall_score(y_test, y_pred, average='macro')})
-            # wandb.log({f"{model_name} F1 Macro": recall_score(y_test, y_pred, average='macro')})
-            wandb.log({f"{model_name} Precision Weighted": precision_score(y_test, y_pred, average='weighted')})
-            wandb.log({f"{model_name} Recall Weighted": recall_score(y_test, y_pred, average='weighted')})
-            wandb.log({f"{model_name} F1 Weighted": recall_score(y_test, y_pred, average='weighted')})
+        print(f"*** Calculate 5 Fold Accuracy and F1 ***")
+        # print(sorted(sklearn.metrics.SCORERS.keys()))
+        # exit(0)
+        # kfold = StratifiedKFold(n_splits=5, shuffle=True)
+        # cv_accuracy = cross_val_score(model, x.values.tolist(), y.values.tolist(), cv=kfold, scoring='accuracy', n_jobs=12)
+        # cv_f1 = cross_val_score(model, x.values.tolist(), y.values.tolist(), cv=kfold, scoring='f1_weighted', n_jobs=12)
 
-            print("*** Metric Plotting Completed ***")
-        except:
-            print(f"{model_name} Failed")
-    # # evaluate each model in turn
-    # results_k_fold = []
-    # names_k_fold = []
-    # for name, model in models:
-    #     kfold = StratifiedKFold(n_splits=10, shuffle=True)
-    #     cv_results = cross_val_score(model, x_train, y_train, cv=kfold, scoring='accuracy')
-    #     results_k_fold.append(cv_results)
-    #     names_k_fold.append(name)
-    #     print(f'{name}: {cv_results.mean()} ({cv_results.std()})')
+        # cv_accuracy_average = sum(cv_accuracy)/len(cv_accuracy)
+        # cv_f1_average = sum(cv_f1) / len(cv_f1)
+        print(f"*** 5 Fold Accuracy and F1 Done ***")
+
+        print("*** Begin Metric Plotting ***")
+        # wandb.sklearn.plot_classifier(model, x_train, x_test, y_train, y_test, y_pred, y_probas, labels,
+        #                               model_name=dataset_name + "_" + model_name)
+
+        accuracy = accuracy_score(y_test, y_pred)
+        precision = precision_score(y_test, y_pred, average='weighted')
+        recall = recall_score(y_test, y_pred, average='weighted')
+        f1 = f1_score(y_test, y_pred, average='weighted')
+
+        wandb.log({f"Accuracy": accuracy, "Dataset": dataset_dict[dataset_name], "Model": model_dict[model_name]})
+        wandb.log({f"Precision Weighted": precision, "Dataset": dataset_dict[dataset_name], "Model": model_dict[model_name]})
+        wandb.log({f"Recall Weighted": recall, "Dataset": dataset_dict[dataset_name], "Model": model_dict[model_name]})
+        wandb.log({f"F1 Weighted": f1, "Dataset": dataset_dict[dataset_name], "Model": model_dict[model_name]})
+        # wandb.log({f"5 Fold Accuracy": cv_accuracy_average, "Dataset": dataset_name, "Model": model_name})
+        # wandb.log({f"5 Fold Weighted F1": cv_f1_average, "Dataset": dataset_name, "Model": model_name})
+
+        # metrics_list.append([dataset_name, model_name, accuracy, precision, recall, f1, cv_accuracy_average, cv_f1_average])
+        metrics_list.append([dataset_dict[dataset_name], model_dict[model_name], accuracy, precision, recall, f1])
+        print("*** Metric Plotting Completed ***")
+        # except:
+        #     print(f"{model_name} Failed")
+
+# wandb.log({"SA_data_table": wandb.Table(data=metrics_list, columns=["dataset_name", "model_name", "accuracy",
+#                                         "precision", "recall", "f1", "cv_accuracy_average", "cv_f1_average"]
+#                                         )
+#            }
+#           )
+wandb.log({"SA_data_table": wandb.Table(data=metrics_list, columns=["dataset_name", "model_name", "accuracy",
+                                        "precision", "recall", "f1"]
+                                        )
+           }
+          )
