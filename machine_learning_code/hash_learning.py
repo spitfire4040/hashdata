@@ -29,22 +29,23 @@ from multiprocessing import Process
 
 
 # Project the data into a visualizeable space using umap and tsne
-def visualizeData(inputs, dataset_name, show_umap=True, show_tsne=False):
+def visualizeData(inputs, dataset_name, n_neighbors, show_umap=True, show_tsne=False):
     if show_umap:
-        umap_reducer = umap.UMAP(n_jobs=12)
+        umap_reducer = umap.UMAP(n_jobs=12, n_neighbors=n_neighbors, metric=metric)
         print("*** UMAP FIT ***")
         umap_embedding = umap_reducer.fit_transform(inputs)
         print("UMAP Finished")
 
         umap_df = pd.DataFrame(umap_embedding, columns=["dim1", "dim2"])
         umap_df["class"] = dataset["class"]
+        print(umap_df["class"].unique())
 
         fig, ax1 = plt.subplots()
         fig.set_size_inches(24, 16)
         sns.set_style("whitegrid")
-        sns.scatterplot(data=umap_df, x="dim1", y="dim2", s=100)
-        fig.show()
-        fig.savefig(f"umap_{dataset_name[46:-4]}.png", dpi=300)
+        sns.scatterplot(data=umap_df, x="dim1", y="dim2", s=100, legend="full", hue="class", style="class")
+        # fig.show()
+        fig.savefig(f"umap_{dataset_name[46:-4]}_{n_neighbors}neighbs.png", dpi=300)
 
     if show_tsne:
         tsne_reducer = TSNE(n_jobs=12, init="pca", learning_rate="auto")
@@ -89,18 +90,17 @@ for dataset_index, dataset_name in enumerate(csv_names_full):
     dataset_count += 1
 
     dataset = read_csv(dataset_name, names=columns)
-    # print(len(dataset))
-    # exit(0)
+    print(f"*** Parameters in {dataset_name}: {dataset.shape[0]} ***")
 
     # Uncomment this line to take only a portion of the data
-    # dataset = dataset.head(len(dataset.index)//8)
+    # dataset = dataset.head(len(dataset.index)//10)
 
     # x is the entire dataframe except for the class column
     x = dataset.drop(['class'], axis=1)
 
    # Create UMAP/TSNE visualizations
-    # visualizeData(x, dataset_name, show_umap=False, show_tsne=True)
-    # continue
+   #  visualizeData(x, dataset_name, n_neighbors=100, show_umap=True, show_tsne=False)
+   #  continue
 
     # y_original is an unaltered list of all values in the class column
     y_original = dataset['class'].values.tolist()
@@ -138,9 +138,9 @@ for dataset_index, dataset_name in enumerate(csv_names_full):
     # models.append(('KNN', KNeighborsClassifier(n_jobs=12)))
     # models.append(('CART', DecisionTreeClassifier()))
     # models.append(('NB', GaussianNB()))
-    # models.append(('SVM', SVC(gamma='auto')))
+    # models.append(('SVM', SVC(gamma='auto', max_iter=1000)))
     # models.append(('linearSVM', LinearSVC()))
-    # models.append(('SGD', SGDClassifier(n_jobs=12)))
+    # models.append(('SGD', SGDClassifier(n_jobs=12, loss="log")))
     models.append(('MLP', MLPClassifier()))
 
 
@@ -160,7 +160,7 @@ for dataset_index, dataset_name in enumerate(csv_names_full):
         y_probas = model.predict_proba(x_test)
         print(f"*** Predictions and Probabilities Done ***")
 
-        print(f"*** Calculate 5 Fold Accuracy and F1 ***")
+        # print(f"*** Calculate 5 Fold Accuracy and F1 ***")
         # print(sorted(sklearn.metrics.SCORERS.keys()))
         # exit(0)
         # kfold = StratifiedKFold(n_splits=5, shuffle=True)
@@ -169,7 +169,7 @@ for dataset_index, dataset_name in enumerate(csv_names_full):
 
         # cv_accuracy_average = sum(cv_accuracy)/len(cv_accuracy)
         # cv_f1_average = sum(cv_f1) / len(cv_f1)
-        print(f"*** 5 Fold Accuracy and F1 Done ***")
+        # print(f"*** 5 Fold Accuracy and F1 Done ***")
 
         print("*** Begin Metric Plotting ***")
         # wandb.sklearn.plot_classifier(model, x_train, x_test, y_train, y_test, y_pred, y_probas, labels,
@@ -180,10 +180,10 @@ for dataset_index, dataset_name in enumerate(csv_names_full):
         recall = recall_score(y_test, y_pred, average='weighted')
         f1 = f1_score(y_test, y_pred, average='weighted')
 
-        wandb.log({f"Accuracy": accuracy, "Dataset": dataset_dict[dataset_name], "Model": model_dict[model_name]})
-        wandb.log({f"Precision Weighted": precision, "Dataset": dataset_dict[dataset_name], "Model": model_dict[model_name]})
-        wandb.log({f"Recall Weighted": recall, "Dataset": dataset_dict[dataset_name], "Model": model_dict[model_name]})
-        wandb.log({f"F1 Weighted": f1, "Dataset": dataset_dict[dataset_name], "Model": model_dict[model_name]})
+        wandb.log({f"{model_name} Accuracy By Num Samples": accuracy, "Num Samples": dataset.shape[0]})
+        wandb.log({f"{model_name} Precision Weighted By Num Samples": precision, "Num Samples": dataset.shape[0]})
+        wandb.log({f"{model_name} Recall Weighted By Num Samples": recall, "Num Samples": dataset.shape[0]})
+        wandb.log({f"{model_name} F1 Weighted By Num Samples": f1, "Num Samples": dataset.shape[0]})
         # wandb.log({f"5 Fold Accuracy": cv_accuracy_average, "Dataset": dataset_name, "Model": model_name})
         # wandb.log({f"5 Fold Weighted F1": cv_f1_average, "Dataset": dataset_name, "Model": model_name})
 
