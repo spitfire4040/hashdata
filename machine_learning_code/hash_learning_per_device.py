@@ -1,3 +1,4 @@
+import pandas as pd
 from pandas import read_csv
 import random
 from sklearn.neural_network import MLPClassifier
@@ -6,22 +7,27 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.model_selection import StratifiedKFold
 import seaborn as sns
 import matplotlib.pyplot  as plt
+import matplotlib as mpl
 import wandb
 import os
 import numpy as np
 import pickle
+import umap
 
 
 wandb.init(project="smart_attacker", entity="unr-mpl")
 
 # Get hash csv file paths
 path_to_csvs = "../hashes_cleaned/"
-path_to_csvs = "../hashes_cleaned_confusionMatrix/"
+# path_to_csvs = "../hashes_cleaned_confusionMatrix/"
 # path_to_csvs = "../hashes_cleaned_noRing/"
 # path_to_csvs = "../hashes_cleaned_noRing_noTpBulb/"
 # path_to_csvs = "../hashes_uncleaned/"
 
-csv_names = sorted(os.listdir(path_to_csvs), reverse=False)[1:]
+name_of_current_data = "Cleaned Hashes"
+# name_of_current_data = "Uncleaned Hashes"
+
+csv_names = sorted(os.listdir(path_to_csvs), reverse=True)
 csv_names_full = []
 for csv_name in csv_names:
     csv_names_full.append(path_to_csvs + csv_name)
@@ -31,14 +37,17 @@ columns = ['dim1', 'dim2', 'dim3', 'dim4', 'dim5', 'dim6', 'dim7', 'dim8', 'dim9
            'dim12', 'dim13', 'dim14', 'dim15', 'dim16', 'dim17', 'dim18', 'dim19', 'dim20', 'dim21',
            'dim22', 'dim23', 'dim24', 'dim25', 'dim26', 'dim27', 'dim28', 'dim29', 'dim30', 'dim31', 'dim32', 'class']
 
-dataset_count = 0
+dataset_count = 10
 dataset_dict = {}
 metrics_list = []
 for dataset_index, dataset_name in enumerate(csv_names_full):
     print(f"*** Begin Processing {dataset_name} Dataset ***")
 
     dataset_dict[dataset_name] = dataset_count
-    dataset_count += 1
+    dataset_count -= 1
+
+    if dataset_dict[dataset_name] != 10 and dataset_dict[dataset_name] != 5 and dataset_dict[dataset_name] != 1:
+        continue
 
     dataset = read_csv(dataset_name, names=columns)
     print(f"*** Parameters in {dataset_name}: {dataset.shape[0]} ***")
@@ -74,221 +83,143 @@ for dataset_index, dataset_name in enumerate(csv_names_full):
     y = dataset['class']
     labels_numeric = dataset['class'].unique()
 
-    labels_string = []
-    for num in range(22):
-    # for num in range(21):
-    # for num in range(20):
-        labels_string.append(class_label_dict[num])
+    # labels_string = []
+    # for num in range(22):
+    # # for num in range(21):
+    # # for num in range(20):
+    #     labels_string.append(class_label_dict[num])
 
     print("*** Dataset Loaded ***")
 
-    x_devices = {}
-    y_devices = {}
 
-    x_train = []
-    y_train = []
+    umap_reducer = umap.UMAP(n_jobs=12, n_neighbors=10)
 
-    x_test = []
-    y_test = []
+    # class1 = dataset[dataset['class'] == 7]
+    # class2 = dataset[dataset['class'] == 19]
+    # class_dataframes = [class1, class2]
+    # class3 = pd.concat(class_dataframes, ignore_index=True)["class"]
+    temp1 = dataset[dataset['class'] == 12]
+    temp2 = dataset[dataset['class'] == 20]
+    temp4 = dataset[dataset['class'] == 10]
+    dataframes = [temp1, temp2, temp4]
+    temp3 = pd.concat(dataframes, ignore_index=True)
+    # temp3 = temp3.sample(frac=1)
+    print("*** Start UMAP Fit ***")
+    umap_embedding = umap_reducer.fit_transform(temp3.drop(['class'], axis=1).values.tolist())
+    print("*** Completed UMAP Fit ***")
+    umap_df = pd.DataFrame(umap_embedding, columns=["dim1", "dim2"])
+    umap_df["class"] = temp3["class"]
+
+    # fig, ax = plt.subplots()
+    sns.set(style="darkgrid", context="paper", rc={'figure.figsize':(3,1.5)})
+    mpl.rcParams['figure.dpi'] = 600
+    plt.xlabel('UMAP Dim. 0')
+    plt.ylabel('UMAP Dim. 1')
+    # plt.title(f'UMAP Visualization of the {name_of_current_data} {dataset_dict[dataset_name]}-Minute Set')
+    sns.scatterplot(data=umap_df, x="dim1", y="dim2", hue="class", style="class", legend=None,
+                    palette=['red', 'blue', "green"], s=5)
+    # plt.show()
+    plt.savefig(f"{name_of_current_data}_{dataset_dict[dataset_name]}")
+    continue
+
+    x = {}
+    y = {}
+    x["train"] = []
+    y["train"] = []
 
     for device_name in labels_numeric:
+        # Get the part of the dataset which pertains to the current device
         temp = dataset[dataset['class'] == device_name]
+        # Shuffle the part of the dataset for the current device
         temp_shuffled = temp.sample(frac=1)
-        temp_shuffled_head = temp_shuffled.head(int((len(temp_shuffled.index))*.3))
-        temp_shuffled_tail = temp_shuffled.tail(int((len(temp_shuffled.index)) * .7))
+        length_temp_shuffled = len(temp_shuffled.index)
 
-        x_devices[device_name] = temp_shuffled_head.drop(['class'], axis=1).values.tolist()
-        y_devices[device_name] = temp_shuffled_head['class'].values.tolist()
+        x[device_name] = {}
+        y[device_name] = {}
+        x[device_name]["test"] = []
+        y[device_name]["test"] = []
 
-        x_train = x_train + temp_shuffled_tail.drop(['class'], axis=1).values.tolist()
-        y_train  = y_train + temp_shuffled_tail['class'].values.tolist()
-        x_test = x_test + temp_shuffled_tail.drop(['class'], axis=1).values.tolist()
-        y_test = y_test + temp_shuffled_tail['class'].values.tolist()
+        temp_shuffled_test = temp_shuffled[:int(length_temp_shuffled * .2)]
+        temp_shuffled_train = temp_shuffled[int(length_temp_shuffled * .2):]
 
-    temp = list(zip(x_train, y_train))
-    random.shuffle(temp)
-    x_train, y_train = zip(*temp)
-    temp = list(zip(x_test, y_test))
-    random.shuffle(temp)
-    x_test, y_test = zip(*temp)
+        x[device_name]["test"] = (x[device_name]["test"] + temp_shuffled_test.drop(['class'], axis=1).values.tolist())
+        y[device_name]["test"] = (y[device_name]["test"] + temp_shuffled_test['class'].values.tolist())
 
-    num_samples_dev = []
-    for device_name in sorted(labels_numeric):
-        num_samples_dev.append(len(temp_shuffled.index))
-        temp = dataset[dataset['class'] == device_name]
-        temp_shuffled = temp.sample(frac=1)
-        temp_shuffled_head = temp_shuffled.head(int((len(temp_shuffled.index)) * .3))
-        x_devices[device_name] = temp_shuffled_head.drop(['class'], axis=1).values.tolist()
-        y_devices[device_name] = temp_shuffled_head['class'].values.tolist()
+        x["train"] = (x["train"] + temp_shuffled_train.drop(['class'], axis=1).values.tolist())
+        y["train"] = (y["train"] + temp_shuffled_train['class'].values.tolist())
 
-    # Spot Check Algorithms
+        temp2 = list(zip(x["train"], y["train"]))
+        random.shuffle(temp2)
+        x["train"], y["train"] = [[i for i, j in temp2], [j for i, j in temp2]]
+
+    print(len(x[device_name]["test"]), len(y[device_name]["test"]),
+          len(x["train"]), len(y["train"]))
+
+    num_samples_per_device = []
+    for device_name in labels_numeric:
+        num_samples_per_device.append(len(y[device_name]["test"]))
+    total_samples = sum(num_samples_per_device)
+
+    # weight_per_device = {}
+    # for dev_index, device_name in enumerate(labels_numeric):
+    #     weight_per_device[class_label_dict[device_name]] = num_samples_per_device[dev_index]/total_samples
+    weight_per_device = []
+    for dev_index, device_name in enumerate(labels_numeric):
+        weight_per_device.append(num_samples_per_device[dev_index]/total_samples)
+    weight_sum = sum(weight_per_device)
+    # continue
     models = []
-    models.append(('MLP', MLPClassifier()))
-    temp = MLPClassifier()
-    print(temp.get_params())
-
-    accuracy_dict = {}
-    precision_dict = {}
-    recall_dict = {}
-    f1_dict = {}
-
-    model_dict = {}
-    model_count = 0
-    # evaluate each model
+    models.append((0, MLPClassifier()))
+    print(models[0][1].get_params())
     for model_name, model in models:
-        model_dict[model_name] = model_count
-        model_count += 1
-        print(f"*** Begin Training {model_name} ***")
-        model.fit(x_train, y_train)
-        print(f"*** {model_name} Trained ***")
+        print("*** Begin Training ***")
+        model.fit(x["train"], y["train"])
+        print("*** Completed Training ***")
 
-        print(f"*** Calculate Predictions and Probabilities ***")
-        y_pred = model.predict(x_test)
-        y_probas = model.predict_proba(x_test)
-        print(f"*** Predictions and Probabilities Done ***")
+        total_accuracy = 0
+        total_precision = 0
+        total_recall = 0
+        total_f1 = 0
+        for dev_index, device_name in enumerate(labels_numeric):
+            y_pred = model.predict(x[device_name]["test"])
 
-        plt.autoscale()
-        fig, ax = plt.subplots(figsize=(20, 20))
+            total_accuracy += (accuracy_score(y[device_name]["test"], y_pred) * weight_per_device[dev_index])
+            total_precision += (precision_score(y[device_name]["test"], y_pred, average='weighted') * weight_per_device[dev_index])
+            total_recall += (recall_score(y[device_name]["test"], y_pred, average='weighted') * weight_per_device[dev_index])
+            total_f1 += (f1_score(y[device_name]["test"], y_pred, average='weighted') * weight_per_device[dev_index])
 
-        conf_mat = confusion_matrix(y_test, y_pred, normalize="true")
-        np.save("cleaned_oneMinute_confusion_matrix_devicesRemoved", conf_mat)
-        ax = sns.heatmap(conf_mat, cbar=False, annot=True, xticklabels=labels_string, yticklabels=labels_string)
+            accuracy = accuracy_score(y[device_name]["test"], y_pred)
+            precision = precision_score(y[device_name]["test"], y_pred, average='weighted')
+            recall = recall_score(y[device_name]["test"], y_pred, average='weighted')
+            f1 = f1_score(y[device_name]["test"], y_pred, average='weighted')
 
-        # fig.savefig(dataset_name[20:-4] + "_uncleaned.png")
-        # fig.savefig(dataset_name[34:-4] + "_noRing.png")
+            wandb.log({f"{class_label_dict[device_name]} accuracy SR on {name_of_current_data}": accuracy,
+                          "Dataset": dataset_dict[dataset_name],
+                          "Num Samples": dataset.shape[0]})
+            wandb.log({f"{class_label_dict[device_name]} precision SR on {name_of_current_data}":precision,
+                          "Dataset": dataset_dict[dataset_name],
+                          "Num Samples": dataset.shape[0]})
+            wandb.log({f"{class_label_dict[device_name]} recall SR on {name_of_current_data}": recall,
+                          "Dataset": dataset_dict[dataset_name],
+                          "Num Samples": dataset.shape[0]})
+            wandb.log({f"{class_label_dict[device_name]} f1 SR on {name_of_current_data}": f1,
+                          "Dataset": dataset_dict[dataset_name],
+                          "Num Samples": dataset.shape[0]})
 
-        exit(0)
+        # total_accuracy /= 22
+        # total_precision /= 22
+        # total_recall /= 22
+        # total_f1 /= 22
 
-        # print(f"*** Calculate 5 Fold Accuracy and F1 ***")
-        # kfold = StratifiedKFold(n_splits=5, shuffle=True)
-        # cv_accuracy = cross_val_score(model, x.values.tolist(), y.values.tolist(), cv=kfold, scoring='accuracy',
-        #                               n_jobs=-1)
-        # cv_f1 = cross_val_score(model, x.values.tolist(), y.values.tolist(), cv=kfold, scoring='f1_weighted', n_jobs=-1)
-        #
-        # cv_accuracy_average = sum(cv_accuracy) / len(cv_accuracy)
-        # cv_f1_average = sum(cv_f1) / len(cv_f1)
-        # print(f"*** 5 Fold Accuracy and F1 Done ***")
-
-        accuracy_dict["base"] = accuracy_score(y_test, y_pred)
-        precision_dict["base"] = precision_score(y_test, y_pred, average='weighted')
-        recall_dict["base"] = recall_score(y_test, y_pred, average='weighted')
-        f1_dict["base"] = f1_score(y_test, y_pred, average='weighted')
-
-        print("*** Begin Per Device ***")
-        for device_name in sorted(labels_numeric):
-            x_test_device = x_devices[device_name]
-            y_test_device = y_devices[device_name]
-
-            y_pred_device = model.predict(x_test_device)
-            y_probas_device = model.predict_proba(x_test_device)
-
-            accuracy_dict[device_name] = accuracy_score(y_test_device, y_pred_device)
-            precision_dict[device_name] = precision_score(y_test_device, y_pred_device, average='weighted')
-            recall_dict[device_name] = recall_score(y_test_device, y_pred_device, average='weighted')
-            f1_dict[device_name] = f1_score(y_test_device, y_pred_device, average='weighted')
-        print("*** Per Device Completed ***")
-
-        print("*** Begin Metric Plotting ***")
-
-        wandb.log({f"{model_name} accuracy on Uncleaned Hashes": accuracy_dict["base"],
-                   f"{class_label_dict[0]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[0],
-                   f"{class_label_dict[1]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[1],
-                   f"{class_label_dict[2]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[2],
-                   f"{class_label_dict[3]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[3],
-                   f"{class_label_dict[4]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[4],
-                   f"{class_label_dict[5]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[5],
-                   f"{class_label_dict[6]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[6],
-                   f"{class_label_dict[7]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[7],
-                   f"{class_label_dict[8]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[8],
-                   f"{class_label_dict[9]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[9],
-                   f"{class_label_dict[10]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[10],
-                   f"{class_label_dict[11]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[11],
-                   f"{class_label_dict[12]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[12],
-                   f"{class_label_dict[13]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[13],
-                   f"{class_label_dict[14]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[14],
-                   f"{class_label_dict[15]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[15],
-                   f"{class_label_dict[16]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[16],
-                   f"{class_label_dict[17]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[17],
-                   f"{class_label_dict[18]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[18],
-                   f"{class_label_dict[19]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[19],
-                   f"{class_label_dict[20]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[20],
-                   f"{class_label_dict[21]} {model_name} accuracy on Uncleaned Hashes": accuracy_dict[21],
+        wandb.log({f"Total accuracy SR on {name_of_current_data}": total_accuracy,
+                      "Dataset": dataset_dict[dataset_name],
+                      "Num Samples": dataset.shape[0]})
+        wandb.log({f"Total precision SR on {name_of_current_data}": total_precision,
+                      "Dataset": dataset_dict[dataset_name],
+                      "Num Samples": dataset.shape[0]})
+        wandb.log({f"Total recall SR on {name_of_current_data}": total_recall,
+             "Dataset": dataset_dict[dataset_name],
+             "Num Samples": dataset.shape[0]})
+        wandb.log({f"Total f1 SR on {name_of_current_data}": total_f1,
                    "Dataset": dataset_dict[dataset_name],
                    "Num Samples": dataset.shape[0]})
-        wandb.log({f"{model_name} precision on Uncleaned Hashes": precision_dict["base"],
-                   f"{class_label_dict[0]} {model_name} precision on Uncleaned Hashes": precision_dict[0],
-                   f"{class_label_dict[1]} {model_name} precision on Uncleaned Hashes": precision_dict[1],
-                   f"{class_label_dict[2]} {model_name} precision on Uncleaned Hashes": precision_dict[2],
-                   f"{class_label_dict[3]} {model_name} precision on Uncleaned Hashes": precision_dict[3],
-                   f"{class_label_dict[4]} {model_name} precision on Uncleaned Hashes": precision_dict[4],
-                   f"{class_label_dict[5]} {model_name} precision on Uncleaned Hashes": precision_dict[5],
-                   f"{class_label_dict[6]} {model_name} precision on Uncleaned Hashes": precision_dict[6],
-                   f"{class_label_dict[7]} {model_name} precision on Uncleaned Hashes": precision_dict[7],
-                   f"{class_label_dict[8]} {model_name} precision on Uncleaned Hashes": precision_dict[8],
-                   f"{class_label_dict[9]} {model_name} precision on Uncleaned Hashes": precision_dict[9],
-                   f"{class_label_dict[10]} {model_name} precision on Uncleaned Hashes": precision_dict[10],
-                   f"{class_label_dict[11]} {model_name} precision on Uncleaned Hashes": precision_dict[11],
-                   f"{class_label_dict[12]} {model_name} precision on Uncleaned Hashes": precision_dict[12],
-                   f"{class_label_dict[13]} {model_name} precision on Uncleaned Hashes": precision_dict[13],
-                   f"{class_label_dict[14]} {model_name} precision on Uncleaned Hashes": precision_dict[14],
-                   f"{class_label_dict[15]} {model_name} precision on Uncleaned Hashes": precision_dict[15],
-                   f"{class_label_dict[16]} {model_name} precision on Uncleaned Hashes": precision_dict[16],
-                   f"{class_label_dict[17]} {model_name} precision on Uncleaned Hashes": precision_dict[17],
-                   f"{class_label_dict[18]} {model_name} precision on Uncleaned Hashes": precision_dict[18],
-                   f"{class_label_dict[19]} {model_name} precision on Uncleaned Hashes": precision_dict[19],
-                   f"{class_label_dict[20]} {model_name} precision on Uncleaned Hashes": precision_dict[20],
-                   f"{class_label_dict[21]} {model_name} precision on Uncleaned Hashes": precision_dict[21],
-                   "Dataset": dataset_dict[dataset_name],
-                   "Num Samples": dataset.shape[0]})
-        wandb.log({f"{model_name} recall on Uncleaned Hashes": recall_dict["base"],
-                   f"{class_label_dict[0]} {model_name} recall on Uncleaned Hashes": recall_dict[0],
-                   f"{class_label_dict[1]} {model_name} recall on Uncleaned Hashes": recall_dict[1],
-                   f"{class_label_dict[2]} {model_name} recall on Uncleaned Hashes": recall_dict[2],
-                   f"{class_label_dict[3]} {model_name} recall on Uncleaned Hashes": recall_dict[3],
-                   f"{class_label_dict[4]} {model_name} recall on Uncleaned Hashes": recall_dict[4],
-                   f"{class_label_dict[5]} {model_name} recall on Uncleaned Hashes": recall_dict[5],
-                   f"{class_label_dict[6]} {model_name} recall on Uncleaned Hashes": recall_dict[6],
-                   f"{class_label_dict[7]} {model_name} recall on Uncleaned Hashes": recall_dict[7],
-                   f"{class_label_dict[8]} {model_name} recall on Uncleaned Hashes": recall_dict[8],
-                   f"{class_label_dict[9]} {model_name} recall on Uncleaned Hashes": recall_dict[9],
-                   f"{class_label_dict[10]} {model_name} recall on Uncleaned Hashes": recall_dict[10],
-                   f"{class_label_dict[11]} {model_name} recall on Uncleaned Hashes": recall_dict[11],
-                   f"{class_label_dict[12]} {model_name} recall on Uncleaned Hashes": recall_dict[12],
-                   f"{class_label_dict[13]} {model_name} recall on Uncleaned Hashes": recall_dict[13],
-                   f"{class_label_dict[14]} {model_name} recall on Uncleaned Hashes": recall_dict[14],
-                   f"{class_label_dict[15]} {model_name} recall on Uncleaned Hashes": recall_dict[15],
-                   f"{class_label_dict[16]} {model_name} recall on Uncleaned Hashes": recall_dict[16],
-                   f"{class_label_dict[17]} {model_name} recall on Uncleaned Hashes": recall_dict[17],
-                   f"{class_label_dict[18]} {model_name} recall on Uncleaned Hashes": recall_dict[18],
-                   f"{class_label_dict[19]} {model_name} recall on Uncleaned Hashes": recall_dict[19],
-                   f"{class_label_dict[20]} {model_name} recall on Uncleaned Hashes": recall_dict[20],
-                   f"{class_label_dict[21]} {model_name} recall on Uncleaned Hashes": recall_dict[21],
-                   "Dataset": dataset_dict[dataset_name],
-                   "Num Samples": dataset.shape[0]})
-        wandb.log({f"{model_name} f1 on Uncleaned Hashes": f1_dict["base"],
-                   f"{class_label_dict[0]} {model_name} f1 on Uncleaned Hashes": f1_dict[0],
-                   f"{class_label_dict[1]} {model_name} f1 on Uncleaned Hashes": f1_dict[1],
-                   f"{class_label_dict[2]} {model_name} f1 on Uncleaned Hashes": f1_dict[2],
-                   f"{class_label_dict[3]} {model_name} f1 on Uncleaned Hashes": f1_dict[3],
-                   f"{class_label_dict[4]} {model_name} f1 on Uncleaned Hashes": f1_dict[4],
-                   f"{class_label_dict[5]} {model_name} f1 on Uncleaned Hashes": f1_dict[5],
-                   f"{class_label_dict[6]} {model_name} f1 on Uncleaned Hashes": f1_dict[6],
-                   f"{class_label_dict[7]} {model_name} f1 on Uncleaned Hashes": f1_dict[7],
-                   f"{class_label_dict[8]} {model_name} f1 on Uncleaned Hashes": f1_dict[8],
-                   f"{class_label_dict[9]} {model_name} f1 on Uncleaned Hashes": f1_dict[9],
-                   f"{class_label_dict[10]} {model_name} f1 on Uncleaned Hashes": f1_dict[10],
-                   f"{class_label_dict[11]} {model_name} f1 on Uncleaned Hashes": f1_dict[11],
-                   f"{class_label_dict[12]} {model_name} f1 on Uncleaned Hashes": f1_dict[12],
-                   f"{class_label_dict[13]} {model_name} f1 on Uncleaned Hashes": f1_dict[13],
-                   f"{class_label_dict[14]} {model_name} f1 on Uncleaned Hashes": f1_dict[14],
-                   f"{class_label_dict[15]} {model_name} f1 on Uncleaned Hashes": f1_dict[15],
-                   f"{class_label_dict[16]} {model_name} f1 on Uncleaned Hashes": f1_dict[16],
-                   f"{class_label_dict[17]} {model_name} f1 on Uncleaned Hashes": f1_dict[17],
-                   f"{class_label_dict[18]} {model_name} f1 on Uncleaned Hashes": f1_dict[18],
-                   f"{class_label_dict[19]} {model_name} f1 on Uncleaned Hashes": f1_dict[19],
-                   f"{class_label_dict[20]} {model_name} f1 on Uncleaned Hashes": f1_dict[20],
-                   f"{class_label_dict[21]} {model_name} f1 on Uncleaned Hashes": f1_dict[21],
-                   "Dataset": dataset_dict[dataset_name],
-                   "Num Samples": dataset.shape[0]})
-
-        print("*** Metric Plotting Completed ***")
